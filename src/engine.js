@@ -149,8 +149,6 @@ class Engine extends EventEmitter {
   cancelTidy() { if (this.tidying) this.tidying.cancel = true; }
   async tidy({ days } = {}) {
     if (this.tidying) return null;
-    await this.checkConnection();
-    if (!this.connected) throw Object.assign(new Error(this.conn.error || '钉钉未连接'), { kind: this.conn.state });
     const src = this.settings.sources;
     const sources = [src.private && { key: 'private', label: '私聊' }, src.group && { key: 'group', label: '群聊' }, src.minutes && { key: 'minutes', label: '听记' }].filter(Boolean)
       .map((s) => ({ ...s, state: 'todo', n: null }));
@@ -161,15 +159,29 @@ class Engine extends EventEmitter {
     const d = this.data;
     const since = days ? Date.now() - days * DAY : Math.max(Math.min(d.marks.lastTidyAt || 0, Date.now() - 12 * 3600e3), S.at(Date.now() - DAY, this.settings.workEnd) - 0);
     try {
+      await this.checkConnection();
+      if (p.cancel) return this.finishTidy(p, [], { stopped: true });
+      if (!this.connected) throw Object.assign(new Error(this.conn.error || '钉钉未连接'), { kind: this.conn.state });
       set('private', { state: 'ing' }); set('group', { state: 'ing' }); tick();
       const msgs = await this.fetchMessages(since, (step) => { p.pct = step === 'all' ? 35 : 50; tick(); });
       const priv = msgs.filter((m) => !m.isGroup).length, grp = msgs.filter((m) => m.isGroup);
       set('private', { state: 'ok', n: priv }); set('group', { state: 'ok', n: new Set(grp.map((m) => m.convName)).size });
-      p.reading = '听记'; set('minutes', { state: 'ing' }); p.pct = 58; tick();
+      // Limit what the floating panel previews to a few excerpts from enabled sources.
+      const recent = msgs.filter(m => m.text?.trim()).sort((a, b) => b.time - a.time);
+      const examples = [...new Set([recent.find(m => !m.isGroup), recent.find(m => m.isGroup), ...recent].filter(Boolean))];
+      p.samples = examples.slice(0, src.minutes ? 2 : 3).map(m => ({
+        id: `msg:${m.id}`, quote: m.text.slice(0, 120),
+        source: m.isGroup ? { type: 'group', name: m.convName, person: m.senderName } : { type: 'person', name: m.senderName || m.convName }
+      }));
+      p.reading = src.minutes ? '听记' : '消息'; set('minutes', { state: 'ing' }); p.pct = 58; tick();
       let mins = { items: [], meetings: 0 };
       if (src.minutes && !p.cancel) { try { mins = await this.minutesCandidates(); } catch (e) { set('minutes', { state: 'fail' }); } }
       if (sources.find((s) => s.key === 'minutes')?.state !== 'fail') set('minutes', { state: 'ok', n: mins.meetings });
-      if (p.cancel) return this.finishTidy(p, [], { stopped: true, msgs });
+      if (p.cancel) return this.finishTidy(p, mins.items, { stopped: true, msgs, meetings: mins.meetings });
+      if (mins.items.length) {
+        const { id, quote, source } = mins.items[0];
+        p.samples.push({ id, quote: String(quote || '').slice(0, 120), source });
+      }
       p.stage = 'think'; p.pct = 70; tick();
       const found = (await this.recognize(msgs)).concat(mins.items || []);
       p.found = found.length; p.pct = 90; tick();
@@ -191,7 +203,9 @@ class Engine extends EventEmitter {
     // 结果里的条目也放进候选，方便加入 / 忽略
     for (const c of sorted) if (!d.candidates.find((x) => x.id === c.id)) d.candidates.push({ ...c, seenAt: Date.now(), pushed: false });
     d.candidates.forEach((c) => { if (sorted.find((x) => x.id === c.id)) c.bubbleSeen = true; });
-    d.marks.lastTidyAt = Date.now(); d.marks.lastMsgSync = Date.now();
+    if (!stopped) {
+      d.marks.lastTidyAt = Date.now(); d.marks.lastMsgSync = Date.now();
+    }
     const stats = { messages: msgs.length, private: msgs.filter((m) => !m.isGroup).length, groupMsgs: msgs.filter((m) => m.isGroup).length,
       meetings, ms: Date.now() - p.startedAt, stopped, sources: p.sources };
     this.tidying = null; this.emit('tidy', null); this.save();

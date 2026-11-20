@@ -280,26 +280,36 @@ function dateRow(scope, id, f, current) {
 }
 
 // ---------- 统一待办行（气泡 / 识别结果） ----------
-function candRow(c, { first = false, grip = true } = {}) {
+function candRow(c, { first = false, bubble = false } = {}) {
   const ed = ui.edits[c.id] || {};
   const pri = 'priority' in ed ? ed.priority : c.priority;
   const due = 'due' in ed ? ed.due : c.due;
   const rec = Sh.recommendRemind(due, now(), S.settings);
   const rem = 'remindAt' in ed ? ed.remindAt : rec?.at;
   const remAuto = !('remindAt' in ed) && rec;
-  const da = (k) => `data-a="menu" data-k="${k}" data-id="${c.id}" data-scope="cand"`;
+  const id = esc(c.id);
+  const da = (k) => `data-a="menu" data-k="${k}" data-id="${id}" data-scope="cand"`;
   const on = (k) => (ui.menu && ui.menu.id === c.id && ui.menu.k === k ? 'on' : '');
-  const pc = pri ? `<span class="chip p${pri[1]} ${on('pri')}" ${da('pri')}>${!('priority' in ed) ? I.sp(10) : ''}${pri}${I.chev}</span>` : `<span class="chip ghost ${on('pri')}" ${da('pri')}>+ 优先级</span>`;
-  const dc = due ? `<span class="chip ddl ${on('due')}" ${da('due')} title="${Sh.deadlineLabel(due, now(), null)}">${I.clk}${deadlineLabel(due)}</span>` : `<span class="chip ghost ${on('due')}" ${da('due')}>${I.clk}加截止</span>`;
-  const rc = rem ? `<span class="chip rem ${on('rem')}" ${da('rem')}>${remAuto ? I.sp(10) : ''}${I.bell()}${Sh.remindWord(rem)} 提醒</span>` : `<span class="chip ghost ${on('rem')}" ${da('rem')}>${I.bell()}${ed.remindAt === null ? '不提醒' : '加提醒'}</span>`;
+  const pc = pri ? `<button type="button" class="chip p${pri[1]} ${on('pri')}" aria-label="编辑优先级" ${da('pri')}>${!('priority' in ed) ? I.sp(10) : ''}${pri}${I.chev}</button>` : `<button type="button" class="chip ghost ${on('pri')}" aria-label="编辑优先级" ${da('pri')}>+ 优先级</button>`;
+  const dc = due ? `<button type="button" class="chip ddl ${on('due')}" aria-label="编辑截止时间" ${da('due')} title="${Sh.deadlineLabel(due, now(), null)}">${I.clk}${deadlineLabel(due)}</button>` : `<button type="button" class="chip ghost ${on('due')}" aria-label="编辑截止时间" ${da('due')}>${I.clk}加截止</button>`;
+  const rc = rem ? `<button type="button" class="chip rem ${on('rem')}" aria-label="编辑提醒" ${da('rem')}>${remAuto ? I.sp(10) : ''}${I.bell()}${Sh.remindWord(rem)} 提醒</button>` : `<button type="button" class="chip ghost ${on('rem')}" aria-label="编辑提醒" ${da('rem')}>${I.bell()}${ed.remindAt === null ? '不提醒' : '加提醒'}</button>`;
   const who = srcWho(c.source);
   const per = who ? `<span class="chip per"><span class="pav" style="background:${avc(who)}">${esc(who[0])}</span>${esc(who)}</span>` : '';
+  const quoteOn = revealedQuotes.has(c.id);
+  const quoteButton = c.quote ? `<button class="tidy-quote-toggle" data-a="tidyQuote" data-id="${esc(c.id)}" aria-expanded="${quoteOn}">原话</button>` : '';
   const where = srcWhere(c.source) ? `<span class="where">${esc(srcWhere(c.source))}</span>` : '';
   const tags = tagSummary(ed.tags, da('tags'), true) || `<button type="button" class="chip ghost ${on('tags')}" ${da('tags')}>＋标签</button>`;
-  let h = `<div class="urow ${first ? 'first' : ''}" draggable="true" data-drag="cand" data-id="${c.id}">
-    ${grip ? `<span class="grip" style="color:#B3BAC6;cursor:grab">${I.grip}</span>` : ''}
-    <div class="rb"><div class="tt">${esc(ed.title || c.title)}</div><div class="chips">${pc}${dc}${rc}${per}${where}${tags}</div></div>
-    <div class="bt"><button class="add" data-a="add" data-id="${c.id}">加入</button><button class="ign" data-a="ignore" data-id="${c.id}">忽略</button></div></div>`;
+  const title = `<div class="tt">${esc(ed.title || c.title)}</div>`;
+  const add = `<button class="add" data-a="add" data-id="${id}">加入</button>`;
+  const ignore = `<button class="ign" data-a="ignore" data-id="${id}">忽略</button>`;
+  const source = per + where + quoteButton;
+  const properties = pc + dc + rc;
+  const body = bubble
+    ? `<div class="rb">${title}<div class="chips">${properties}${source}${tags}</div></div><div class="bt">${add}${ignore}</div>`
+    : `<span class="grip" aria-hidden="true">${I.grip}</span>${title}<div class="bt">${ignore}${add}</div>
+       <div class="source-line">${source}</div><div class="chips">${properties}${tags}</div>`;
+  let h = `<div class="urow ${first ? 'first' : ''}" draggable="true" data-drag="cand" data-id="${id}">${body}</div>`;
+  if (quoteOn && c.quote) h += `<blockquote class="tidy-quote"><span class="ss">${esc([who, srcWhere(c.source), c.source?.type === 'meet' ? '听记' : '', c.source?.time ? Sh.dayWord(c.source.time) + ' ' + Sh.hm(c.source.time) : ''].filter(Boolean).join(' · '))}</span>「${esc(cleanQuote(c.quote))}」</blockquote>`;
   if (ui.menu && ui.menu.id === c.id && ui.menu.scope === 'cand') h += `<div style="padding:0 12px 6px">${menuHtml(ui.menu.k, c, 'cand')}</div>`;
   return h;
 }
@@ -321,7 +331,7 @@ function bubbleHtml() {
   if (!q.length || ui.bubbleHidden) return '';
   const c = q[0];
   if (ui.lastBubbleId !== c.id) { ui.lastBubbleId = c.id; armBubbleTimer(); }
-  const card = `<div class="card" data-bubble="1">${bubbleHead(c)}${candRow(c, { first: true, grip: false })}</div>`;
+  const card = `<div class="card" data-bubble="1">${bubbleHead(c)}${candRow(c, { first: true, bubble: true })}</div>`;
   return q.length > 1 ? `<div class="stack"><div class="peek2"></div><div style="position:relative">${card}</div><span class="more">+${q.length - 1}</span></div>` : card;
 }
 function armBubbleTimer() {
@@ -344,34 +354,27 @@ function alertHtml() {
 }
 
 // ---------- 一键识别：小钉卡片 → 结果 ----------
+let tidyPlayback = null;
+const revealedQuotes = new Set();
 function tidyHtml() {
   if (ui.tidyErr) return `<div class="card"><div class="cbox"><img src="${POSE('oops')}" alt="小钉"><div style="flex:1"><b style="font-size:16px">没读成</b><div class="ss" style="margin-top:4px">${esc(ui.tidyErr)}</div></div><button class="ib" data-a="tidyClose">${I.x}</button></div></div>`;
-  if (ui.tidy) {
-    const p = ui.tidy;
-    const reading = p.stage === 'think';
-    const chips = (p.sources || []).map((s) => `<span class="scc ${s.state === 'ok' ? 'ok' : s.state === 'ing' ? 'ing' : s.state === 'fail' ? 'fail' : ''}">${s.label}${s.state === 'ok' ? (s.n != null ? ' ' + s.n : '') + ' ✓' : s.state === 'ing' ? ' …' : s.state === 'fail' ? ' 读不到' : ''}</span>`).join('');
-    const slow = now() - (p.startedAt || now()) > 30e3 ? '；消息比较多，再等一下' : '';
-    return `<div class="card"><div class="cbox"><img src="${POSE(reading ? 'think' : 'search')}" alt="小钉"><div style="flex:1;min-width:0">
-      <b style="font-size:16px">${reading ? '小钉在想哪些是你的事…' : '小钉在翻消息…'}</b>
-      <div class="ss" style="margin-top:2px">${reading ? (p.found ? `已经找到 <b style="color:var(--blue2)">${p.found} 件</b>，在去掉重复的` : '在判断哪些是你的事') : `正在读「${esc(p.reading || '消息')}」`}${slow}</div>
-      <div class="srcc">${chips}</div><div class="pbar"><i style="width:${p.pct || 5}%"></i></div></div>
-      <button class="stopb" data-a="tidyStop">${I.stop}停止</button></div></div>`;
-  }
+  if (ui.tidy) return progressCard(ui.tidy);
   const r = ui.tidyResult; if (!r) return '';
   const main = r.main.filter((c) => !c._done), maybe = r.maybe.filter((c) => !c._done);
   const st = r.stats;
   if (!r.main.length && !r.maybe.length) {
-    return `<div class="card"><div class="cbox"><img src="${POSE('empty')}" alt="小钉"><div style="flex:1"><b style="font-size:16px">没找到新的待办</b><div class="ss" style="margin-top:4px">读了 ${st.messages} 条消息${st.meetings ? `、${st.meetings} 场会` : ''}，都是闲聊，或者已经在清单里了。</div></div><button class="ib" data-a="tidyClose">${I.x}</button></div></div>`;
+    return `<div class="card"><div class="cbox"><img src="${POSE('empty')}" alt="小钉"><div style="flex:1"><b style="font-size:16px">${st.stopped ? '已停止整理' : '没找到新的待办'}</b><div class="ss" style="margin-top:4px">${st.stopped ? '可以随时重新识别。' : `读了 ${st.messages} 条消息${st.meetings ? `、${st.meetings} 场会` : ''}。`}${(st.sources || []).some(s => s.state === 'fail') ? '部分来源暂时读不到。' : ''}</div></div><button class="ib" data-a="tidyClose">${I.x}</button></div></div>`;
   }
+  const sourcesRead = [st.private && `私聊 ${st.private} 条`, st.groupMsgs && `群聊 ${st.groupMsgs} 条`, st.meetings && `听记 ${st.meetings} 场`].filter(Boolean).join(' · ');
   const failed = (st.sources || []).filter((s) => s.state === 'fail');
   const coach = ui.coach === 'tidy' ? `<div class="coach">${I.sp(12)}<span>每一件你都能点标签改，<b>加入</b>才会进清单，<b>忽略</b>就不再提。</span><button class="ib" style="color:#fff;margin-left:auto" data-a="coachOff">${I.x}</button></div>` : '';
-  return `${coach}<div class="card"><div class="hd"><span class="tile">${I.sp(16)}</span><div style="flex:1;min-width:0"><b style="font-size:16px">${st.stopped ? '已停止' : '小钉帮你整理好了'}</b><div class="ss">${Sh.hm(r.at)} · 用时 ${Math.max(1, Math.round(st.ms / 1000))} 秒</div></div>
-      <button class="ib" data-a="tidy" title="重新识别">${I.refresh}</button><button class="ib" data-a="tidyClose">${I.x}</button></div>
+  return `${coach}<div class="card motion-results"><header class="motion-head">${art('laptop')}<div role="status"><h2>${st.stopped ? '已停止整理' : main.length + maybe.length ? `找到 ${main.length + maybe.length} 件待确认` : '这批处理好了'}</h2>
+      <p class="ss">可修改属性，也可查看原话</p></div><div class="head-actions"><button class="ib" data-a="tidy" title="重新识别">${I.refresh}</button><button class="ib" data-a="tidyClose" aria-label="收起识别结果">${I.x}</button></div></header>
     ${failed.length ? `<div class="warnl"><span style="flex:1">「${failed.map((s) => s.label).join('、')}」暂时读不到，下面是其它来源的结果</span></div>` : ''}
-    <div class="sum">替你看了 ${st.messages} 条消息，找到 <b>${r.main.length} 件要处理</b>${r.maybe.length ? `，${r.maybe.length} 件可能不用管` : ''}<div class="srcs">${st.private ? `<span>私聊 ${st.private}</span>` : ''}${st.groupMsgs ? `<span>群聊 ${st.groupMsgs}</span>` : ''}${st.meetings ? `<span>会议 ${st.meetings}</span>` : ''}</div></div>
+    <div class="sum"><span class="sum-line"><span title="${esc(sourcesRead)}">已读 ${st.messages} 条${st.private === st.messages && st.messages ? '私聊' : '消息'}${st.meetings ? '、' + st.meetings + ' 场听记' : ''}</span><i aria-hidden="true"></i><b>${main.length} 件要处理</b></span></div>
     <div class="list" style="max-height:420px">${main.map((c, i) => candRow(c, { first: i === 0 })).join('') || '<div class="ss" style="padding:10px 16px">这批都处理完了</div>'}
-    ${maybe.length ? `<div class="fold" data-a="maybeOpen">${ui.tidyMaybeOpen ? '⌄' : '›'}&nbsp; 可能不用管 · ${maybe.length}</div>${ui.tidyMaybeOpen ? maybe.map((c) => candRow(c)).join('') : ''}` : ''}</div>
-    <div class="ft"><span class="ss" style="flex:1">每一件都由你确认</span><button class="kb2" data-a="tidyClose">稍后</button>${main.length ? `<button class="kb1" data-a="addAll">全部加入（${main.length}）</button>` : ''}</div></div>`;
+    ${maybe.length ? `<button type="button" class="fold" data-a="maybeOpen" aria-expanded="${ui.tidyMaybeOpen}">${I.chev}可能不用管 · ${maybe.length}</button>${ui.tidyMaybeOpen ? maybe.map((c) => candRow(c)).join('') : ''}` : ''}</div>
+    <div class="ft"><button class="kb2" data-a="tidyClose">稍后</button>${main.length ? `<button class="kb1" data-a="addAll">全部加入 (${main.length})</button>` : ''}</div></div>`;
 }
 
 // ---------- 便签 ----------
@@ -532,6 +535,12 @@ function render() {
   const focusedCheck = document.activeElement?.matches('.ck') ? document.activeElement : null;
   const app = $('#app'); app.classList.toggle('right', S.side === 'right');
   if (ui.menu?.k === 'tags' && !isTaskProperty(ui.menu)) app.style.setProperty('--tag-panel-height', (screen.availHeight - 40) + 'px');
+  const tidyLeft = !!(ui.tidy || ui.tidyResult || ui.tidyErr);
+  app.classList.toggle('tidy-left', tidyLeft);
+  if (tidyLeft) {
+    app.style.setProperty('--tidy-panel-height', Math.max(160, screen.availHeight - 44) + 'px');
+    app.style.setProperty('--tidy-panel-width', Math.max(170, Math.min(460, screen.availWidth - 452)) + 'px');
+  }
   const onboarding = !S.settings.onboarded;
   // 便签
   const note = $('#note');
@@ -572,12 +581,24 @@ function render() {
   // 左边：识别卡 / 提醒 / 气泡（展开时）
   const panel = $('#panel');
   let ph = '';
-  if (ui.tidy || ui.tidyResult || ui.tidyErr) ph = (ui.expanded && !onboarding && ui.poolOpen ? poolHtml() : '') + tidyHtml();
+  if (ui.tidy || ui.tidyResult || ui.tidyErr) ph = tidyHtml() + (ui.expanded && !onboarding && ui.poolOpen ? poolHtml() : '');
   else if (ui.expanded && !onboarding && ui.poolOpen) ph = (currentAlert() ? alertHtml() : '') + poolHtml();
   else if (ui.expanded && !onboarding) ph = currentAlert() ? alertHtml() : bubbleHtml();
   const pin = $('#poolIn'); const pinFocus = pin && document.activeElement === pin;
   const plScroll = $('#panel .pl')?.scrollTop || 0;
-  panel.innerHTML = ph;
+  if (!tidyLeft || panel._tidyMarkup !== ph) {
+    const previous = evidencePositions(panel);
+    const extracting = !!panel.querySelector('.motion-progress[data-stage="think"]');
+    const hadResult = !!panel.querySelector('.motion-results');
+    const resultScroll = panel.querySelector('.motion-results .list')?.scrollTop || 0;
+    panel.innerHTML = ph;
+    if (tidyLeft) animateTidyPanel(panel, previous, extracting, hadResult);
+    if (resultScroll && hadResult) {
+      const list = panel.querySelector('.motion-results .list');
+      if (list) list.scrollTop = resultScroll;
+    }
+  }
+  panel._tidyMarkup = tidyLeft ? ph : null;
   const pin2 = $('#poolIn'); if (pin2) { pin2.value = ui.drafts.pool.title; if (pinFocus) { pin2.focus(); pin2.setSelectionRange(pin.selectionStart, pin.selectionEnd); } }
   const pl2 = $('#panel .pl'); if (pl2) pl2.scrollTop = plScroll;
   if (focusedCheck) $(`[data-instance="${CSS.escape(rowInstance(focusedCheck))}"] .ck[data-id="${CSS.escape(focusedCheck.dataset.id)}"]`)?.focus({ preventScroll: true });
@@ -618,9 +639,10 @@ function reportSize() {
   const pr = p.innerHTML ? p.getBoundingClientRect() : { width: 0, height: 0 };
   const menuBottom = $('#taskPopover').firstElementChild?.getBoundingClientRect().bottom || 0;
   const noteHeight = Math.max(n.height, menuBottom);
-  const key = [n.width, noteHeight, pr.width, pr.height].map(Math.ceil).join(',');
+  const tidyLeft = $('#app').classList.contains('tidy-left');
+  const key = [n.width, noteHeight, pr.width, pr.height, Number(tidyLeft)].map(Math.ceil).join(',');
   if (key === lastSize) return; lastSize = key;
-  A('layout', { noteW: Math.ceil(n.width), noteH: Math.ceil(noteHeight) + 24, panelW: Math.ceil(pr.width), panelH: Math.ceil(pr.height) + 24 });
+  A('layout', { tidyLeft, noteW: Math.ceil(n.width), noteH: Math.ceil(noteHeight) + 24, panelW: Math.ceil(pr.width), panelH: Math.ceil(pr.height) + 24 });
 }
 new ResizeObserver(() => requestAnimationFrame(reportSize)).observe(document.body);
 document.addEventListener('scroll', (event) => {
@@ -641,31 +663,21 @@ function toast(text, undo) {
   ui.toastTimer = setTimeout(() => { ui.toast = null; render(); }, 4000);
   render();
 }
-// 「加入」：缩成蓝条飞向便签头部
-function fly(fromEl, text) {
-  const target = $('#note .pose') || $('#note');
-  if (!fromEl || !target) return;
-  const a = fromEl.getBoundingClientRect(), b = target.getBoundingClientRect();
-  const pill = document.createElement('div'); pill.className = 'flypill'; pill.innerHTML = I.sp(11) + esc(text);
-  pill.style.left = a.left + 12 + 'px'; pill.style.top = a.top + 10 + 'px';
-  document.body.appendChild(pill);
-  requestAnimationFrame(() => { pill.style.transform = `translate(${b.left - a.left - 12}px, ${b.top - a.top - 10}px) scale(.4)`; pill.style.opacity = '0.2'; });
-  setTimeout(() => pill.remove(), 500);
-  ui.pose = 'hug';
-}
-
 // ---------- 动作 ----------
 async function addCand(id, el) {
   const c = candById(id); if (!c) return;
-  const row = el?.closest('.urow'); row?.classList.add('out');
-  fly(row, c.title);
+  const movement = arrivalSnapshot([id]);
   const edits = ui.edits[id];
   const t = await A('add', id, edits || {});
   if (!t) return;
   delete ui.edits[id];
-  if (ui.tidyResult) markTidy(id);
+  if (ui.tidyResult) {
+    markTidy(id);
+    ui.expanded = true;
+  }
   rememberUndo(async () => { if (edits) ui.edits[id] = edits; await A('unadd', t.id); unmarkTidy(id); });
   render();
+  landInToday(movement, [t]);
 }
 async function ignoreCand(id, el) {
   const c = candById(id); if (!c) return;
@@ -674,16 +686,36 @@ async function ignoreCand(id, el) {
   if (ui.tidyResult) markTidy(id);
   toast(`已忽略「${c.title}」`, async () => { await A('unignore', id); unmarkTidy(id); });
 }
-function markTidy(id) { for (const k of ['main', 'maybe']) (ui.tidyResult[k] || []).forEach((c) => { if (c.id === id) c._done = true; }); if (![...ui.tidyResult.main, ...ui.tidyResult.maybe].some((c) => !c._done)) setTimeout(() => { ui.tidyResult = null; render(); }, 600); }
+function markTidy(...ids) {
+  const result = ui.tidyResult;
+  const candidates = [...result.main, ...result.maybe];
+  for (const candidate of candidates) {
+    if (ids.includes(candidate.id)) candidate._done = true;
+  }
+  if (candidates.some(c => !c._done)) return;
+  // Keep both columns in place until the final title lands in the list.
+  setTimeout(() => {
+    if (ui.tidyResult !== result || candidates.some(c => !c._done)) return;
+    ui.tidyResult = null; render();
+  }, ids.length > 1 ? 1050 : 800);
+}
 function unmarkTidy(id) { if (!ui.tidyResult) return; for (const k of ['main', 'maybe']) (ui.tidyResult[k] || []).forEach((c) => { if (c.id === id) c._done = false; }); render(); }
 
 async function runTidy(opts) {
-  ui.tidyErr = null; ui.tidyResult = null; ui.tidy = { stage: 'read', sources: [], pct: 3, startedAt: Date.now() }; render();
+  if (tidyPlayback) return;
+  revealedQuotes.clear();
+  const playback = new TidyPlayback(p => { ui.tidy = p; refreshFromState(); });
+  tidyPlayback = playback;
+  ui.tidyErr = null; ui.tidyResult = null; ui.coach = null;
+  ui.tidy = playback.progress; render();
   try {
     const r = await A('tidy', opts);
+    await playback.finish(r);
     ui.tidy = null;
+    if (r && playback.stopped) r.stats.stopped = true;
     if (r) { ui.tidyResult = r; if (!S.settings.tips.tidy) { ui.coach = 'tidy'; A('settings', { tips: { tidy: true } }); } }
   } catch (e) { ui.tidy = null; ui.tidyErr = e.kind === 'not_logged_in' || e.kind === 'expired' ? '钉钉还没授权，点头部的连接状态重新授权。' : e.message; }
+  playback.stop(); tidyPlayback = null;
   render();
 }
 
@@ -748,7 +780,17 @@ const handlers = {
   src: (el) => { const k = el.dataset.k; A('settings', { sources: { [k]: !S.settings.sources[k] } }); },
   density: (el) => A('settings', { density: el.dataset.v }),
   tidy: () => { if (!ui.tidy) runTidy(); },
-  tidyStop: () => A('cancelTidy'),
+  tidyStop: () => {
+    tidyPlayback?.stop();
+    if (ui.tidy) { ui.tidy.stopping = true; render(); }
+    return A('cancelTidy');
+  },
+  tidyQuote: el => {
+    const id = el.dataset.id;
+    if (revealedQuotes.has(id)) revealedQuotes.delete(id); else revealedQuotes.add(id);
+    render();
+    document.querySelector(`[data-a="tidyQuote"][data-id="${CSS.escape(id)}"]`)?.focus({preventScroll:true});
+  },
   tidyClose: () => { ui.tidyResult = null; ui.tidyErr = null; ui.coach = null; render(); },
   coachOff: () => { ui.coach = null; render(); },
   maybeOpen: () => { ui.tidyMaybeOpen = !ui.tidyMaybeOpen; render(); },
@@ -757,15 +799,18 @@ const handlers = {
     if (!result) return;
     const ids = result.main.filter((c) => !c._done).map((c) => c.id);
     const edits = Object.fromEntries(ids.filter((id) => ui.edits[id]).map((id) => [id, ui.edits[id]]));
+    const movement = arrivalSnapshot(ids);
     const tasks = await A('addAll', ids, edits);
     for (const { originId } of tasks) delete ui.edits[originId];
-    if (ui.tidyResult === result) ui.tidyResult = null;
+    if (tasks.length && ui.tidyResult === result) markTidy(...tasks.map(t => t.originId));
     ui.expanded = true;
     if (tasks.length) rememberUndo(async () => {
       for (const task of tasks) await A('unadd', task.id);
       Object.assign(ui.edits, edits);
+      if (ui.tidyResult === result) for (const task of tasks) unmarkTidy(task.originId);
     });
     render();
+    landInToday(movement, tasks);
   },
   add: (el) => addCand(el.dataset.id, el),
   ignore: (el) => ignoreCand(el.dataset.id, el),
@@ -1112,7 +1157,7 @@ document.addEventListener('focusout', () => {
   if (refreshPending) setTimeout(() => { if (refreshPending) refreshFromState(); }, 0);
 });
 window.xd.on('state', (s) => { S = s; refreshFromState(); });
-window.xd.on('tidy', (p) => { if (p) { ui.tidy = p; refreshFromState(); } });
+window.xd.on('tidy', p => { if (p) tidyPlayback?.update(p); });
 window.xd.on('side', (side) => {
   if (S) S.side = side;
   $('#app').classList.toggle('right', side === 'right');

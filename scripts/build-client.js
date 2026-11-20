@@ -24,7 +24,7 @@ packager({
   overwrite: true,
   electronZipDir,
   ignore: [
-    /^\/(dist|debug|test|scripts)(\/|$)/,
+    /^\/(dist|debug|test|scripts|design)(\/|$)/,
     /^\/\.(env|git)/,
     /(^|\/)\.DS_Store$/,
     /^\/ai-todo-data\.json/,

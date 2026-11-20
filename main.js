@@ -21,10 +21,14 @@ function applyBounds() {
   if (!win || win.isDestroyed()) return;
   const wa = screen.getDisplayNearestPoint({ x: layout.noteX, y: layout.noteY }).workArea;
   const hasPanel = layout.panelW > 0;
-  layout.side = hasPanel && layout.noteX - layout.panelW - GAP < wa.x ? 'right' : 'left';
+  layout.side = hasPanel && !layout.tidyLeft && layout.noteX - layout.panelW - GAP < wa.x ? 'right' : 'left';
   const w = layout.noteW + (hasPanel ? layout.panelW + GAP : 0);
   const h = Math.min(Math.max(layout.noteH, hasPanel ? layout.panelH : 0), wa.height - 16);
-  const x = hasPanel && layout.side === 'left' ? layout.noteX - layout.panelW - GAP : layout.noteX;
+  let x = hasPanel && layout.side === 'left' ? layout.noteX - layout.panelW - GAP : layout.noteX;
+  if (hasPanel && layout.tidyLeft) {
+    x = Math.max(wa.x, Math.min(x, wa.x + wa.width - w));
+    layout.noteX = x + layout.panelW + GAP;
+  }
   const y = Math.max(wa.y + 8, Math.min(layout.noteY, wa.y + wa.height - h - 8));
   win.__moving = true;
   win.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) });
@@ -79,7 +83,7 @@ const push = () => win && !win.isDestroyed() && win.webContents.send('state', sn
 
 const actions = {
   state: () => snapshot(),
-  layout: ({ noteW, noteH, panelW, panelH }) => { Object.assign(layout, { noteW, noteH, panelW: panelW || 0, panelH: panelH || 0 }); applyBounds(); return layout.side; },
+  layout: ({ noteW, noteH, panelW, panelH, tidyLeft }) => { Object.assign(layout, { noteW, noteH, tidyLeft, panelW: panelW || 0, panelH: panelH || 0 }); applyBounds(); return layout.side; },
   add: (id, edits) => engine.add(id, edits),
   addAll: (ids, edits) => engine.addAll(ids, edits),
   ignore: (id) => engine.ignore(id),
