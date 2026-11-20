@@ -2,10 +2,12 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execFileSync } = require('child_process');
 const packager = require('@electron/packager');
 const { productName, version: appVersion } = require('../package.json');
 const root = path.resolve(__dirname, '..');
 const version = require('electron/package.json').version;
+const name = `${productName} ${appVersion}`;
 const cache = path.join(os.homedir(), 'Library/Caches/electron');
 let electronZipDir;
 if (fs.existsSync(cache)) {
@@ -14,14 +16,13 @@ if (fs.existsSync(cache)) {
 
 packager({
   dir: root,
-  name: `${productName} ${appVersion}`,
+  name,
   platform: 'darwin',
   arch: 'arm64',
   appBundleId: 'com.xiaoding.aitodo050',
   out: path.join(root, 'dist'),
   overwrite: true,
   electronZipDir,
-  osxSign: { identity: '-', continueOnError: false },
   ignore: [
     /^\/(dist|debug|test|scripts)(\/|$)/,
     /^\/\.(env|git)/,
@@ -29,7 +30,14 @@ packager({
     /^\/ai-todo-data\.json/,
     /^\/[^/]+\.command$/,
   ],
-}).then(paths => paths.forEach(p => console.log(p))).catch(e => {
+}).then(paths => {
+  for (const output of paths) {
+    const bundle = path.join(output, `${name}.app`);
+    execFileSync('codesign', ['--force', '--deep', '--sign', '-', bundle], { stdio: 'inherit' });
+    execFileSync('codesign', ['--verify', '--deep', '--strict', bundle], { stdio: 'inherit' });
+    console.log(output);
+  }
+}).catch(e => {
   console.error(e.message);
   process.exitCode = 1;
 });
