@@ -1,0 +1,19 @@
+{
+  "name": "ai-todo",
+  "productName": "AI待办",
+  "version": "0.5.0",
+  "description": "AI待办 · 钉钉桌面便签：小钉从钉钉消息里替你找出要做的事，你只决定加入还是忽略",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "demo": "AT_DEMO=1 electron .",
+    "test": "node --test test/*.test.js",
+    "check-dws": "node scripts/check-dws.js",
+    "pack": "node scripts/build-client.js"
+  },
+  "devDependencies": {
+    "@electron/packager": "^18.4.4",
+    "electron": "^33.4.11"
+  }
+}
